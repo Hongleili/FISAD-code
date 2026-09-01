@@ -1,0 +1,34 @@
+import pandas as pd
+import numpy as np
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
+
+df = pd.read_csv('FISAD_data.csv')  # run from the directory containing FISAD_data.csv, or edit this path
+TRAITS = {'a':'Agreeableness','e':'Extraversion','o':'Openness','c':'Conscientiousness','n':'Neuroticism'}
+
+df['Tops_Bottom'] = df['Tops'].astype(str) + '_' + df['Bottom'].astype(str)
+df['Tops_Color'] = df['Tops'].astype(str) + '_' + df['Tops Color'].astype(str)
+df['Color_Sleeve'] = df['Tops Color'].astype(str) + '_' + df['Sleeve'].astype(str)
+df['Tops_Sleeve'] = df['Tops'].astype(str) + '_' + df['Sleeve'].astype(str)
+df['Tops_Color_Sleeve'] = df['Tops'].astype(str) + '_' + df['Tops Color'].astype(str) + '_' + df['Sleeve'].astype(str)
+
+SINGLE_FEATURES = ['Tops','Bottom','Tops Color','Bottom Color','Sleeve','Hair Style','Hair Color']
+COMPOSITE_FEATURES = ['Tops_Bottom','Tops_Color','Color_Sleeve','Tops_Sleeve','Tops_Color_Sleeve']
+ALL_FEATURES = SINGLE_FEATURES + COMPOSITE_FEATURES
+
+for seed in [1, 2, 3, 42, 99]:
+    shuffled = df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    discovery = shuffled.iloc[:len(shuffled)//2].copy()
+    print(f"--- Seed {seed} ---")
+    for trait, trait_name in TRAITS.items():
+        pvals = []
+        for feat in ALL_FEATURES:
+            groups = [g[trait].values for _, g in discovery.groupby(feat) if len(g) >= 5]
+            if len(groups) < 2:
+                pvals.append(1.0); continue
+            _, pval = stats.f_oneway(*groups)
+            pvals.append(pval)
+        reject, _, _, _ = multipletests(pvals, alpha=0.05, method='fdr_bh')
+        survivors = [f for f, r in zip(ALL_FEATURES, reject) if r]
+        if survivors:
+            print(f"  {trait_name}: {survivors}")
